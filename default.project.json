@@ -1,0 +1,9 @@
+{
+	"name": "cmdx-test",
+	"tree": {
+		"$path": "src",
+		"Knit": {
+			"$path": "src"
+		}
+	}
+}
