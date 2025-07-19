@@ -8,6 +8,7 @@ local defaultConfig = require(script.Parent.config)
 
 local serverInstances = {}
 local commandInstanceMap = {}
+local registeredPrefixes = {}
 
 unreliableCommandEvent.Name = "UnreliableCommand"
 reliableCommandEvent.Name = "ReliableCommand"
@@ -80,6 +81,15 @@ local function deepMerge(base, override)
 		end
 	end
 	return base
+end
+
+local function isCommandMessage(message)
+	for _, prefix in pairs(registeredPrefixes) do
+		if message:sub(1, #prefix) == prefix then
+			return true
+		end
+	end
+	return false
 end
 
 local function findOptionValue(argName, split, short, long, type): any?
@@ -158,16 +168,23 @@ local function getInstanceByMessage(message)
 end
 
 unreliableCommandEvent.OnServerEvent:Connect(function(player, message)
+	if not isCommandMessage(message) then
+		return
+	end
 	if not player or not player:IsA("Player") then
-		warn("Invalid player in unreliable command event.")
+		warn("Invalid player in command event (Unreliable).")
 		return
 	end
 	local instance, commandName = getInstanceByMessage(message)
 	onCommand(instance, commandName, player, message)
 end)
+
 reliableCommandEvent.OnServerEvent:Connect(function(player, message)
+	if not isCommandMessage(message) then
+		return
+	end
 	if not player or not player:IsA("Player") then
-		warn("Invalid player in unreliable command event.")
+		warn("Invalid player in command event (Reliable).")
 		return
 	end
 	local instance, commandName = getInstanceByMessage(message)
@@ -176,8 +193,11 @@ end)
 
 game.Players.PlayerAdded:Connect(function(player)
 	player.Chatted:Connect(function(message)
+		if not isCommandMessage(message) then
+			return
+		end
 		if not player or not player:IsA("Player") then
-			warn("Invalid player in unreliable command event.")
+			warn("Invalid player in command event (Chat).")
 			return
 		end
 		local instance, commandName = getInstanceByMessage(message)
@@ -238,6 +258,7 @@ function server:registerCommand(commandName, config, callback)
 		instance = self,
 		name = commandName,
 	}
+	registeredPrefixes[self._globalConfig.prefix] = true
 end
 
 function server:resolveCommand(player, config, message): (table?, string?, string?)
