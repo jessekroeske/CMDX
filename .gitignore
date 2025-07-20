@@ -12,6 +12,8 @@ luac.out
 *.ko
 *.obj
 *.elf
+*.rbxm
+*.rbxl
 
 # Precompiled Headers
 *.gch

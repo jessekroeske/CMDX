@@ -1,20 +1,9 @@
-local eventFolder = Instance.new("Folder")
-eventFolder.Name = "Commands"
-eventFolder.Parent = script.Parent
-
-local unreliableCommandEvent = Instance.new("UnreliableRemoteEvent")
-local reliableCommandEvent = Instance.new("RemoteEvent")
-local defaultConfig = require(script.Parent.config)
-
 local serverInstances = {}
 local commandInstanceMap = {}
 local registeredPrefixes = {}
+local defaultConfig = require(script.Parent.config)
 
-unreliableCommandEvent.Name = "UnreliableCommand"
-reliableCommandEvent.Name = "ReliableCommand"
-unreliableCommandEvent.Parent = eventFolder
-
-local function splitMessage(input): (table?, string?)
+local function splitMessage(input)
 	local text = input
 	local result = {}
 	-- selene: allow(unbalanced_assignments)
@@ -40,7 +29,7 @@ local function splitMessage(input): (table?, string?)
 	return result
 end
 
-local function buildFQCN(prefix: string, namespace: string?, commandName: string): string
+local function buildFQCN(prefix, namespace, commandName)
 	return prefix .. (namespace and namespace .. " " or "") .. commandName
 end
 
@@ -52,10 +41,10 @@ local function handleError(self, player, message)
 	end
 end
 
-local function parseType(value, type)
-	if type == "number" then
+local function parseType(value, argType)
+	if argType == "number" then
 		return tonumber(value)
-	elseif type == "boolean" then
+	elseif argType == "boolean" then
 		if typeof(value) == "boolean" then
 			return value
 		end
@@ -66,7 +55,7 @@ local function parseType(value, type)
 		else
 			return true
 		end
-	elseif type == "string" then
+	elseif argType == "string" then
 		return tostring(value)
 	end
 	return value
@@ -92,7 +81,7 @@ local function isCommandMessage(message)
 	return false
 end
 
-local function findOptionValue(argName, split, short, long, type): any?
+local function findOptionValue(argName, split, short, long, argType)
 	assert(type(split) == "table", "Split must be a table")
 	if short then
 		assert(type(short) == "string", "Short form must be a string")
@@ -100,17 +89,16 @@ local function findOptionValue(argName, split, short, long, type): any?
 	if long then
 		assert(type(long) == "string", "Long form must be a string")
 	end
-	assert(type(type) == "string", "Type must be a string")
 
 	if not short and not long then
-		return parseType(split[argName], type)
+		return parseType(split[argName], argType)
 	end
 
 	for _, v in ipairs(split) do
 		if v:sub(1, #short) == short then
-			return parseType(v:sub(#short + 1), type)
+			return parseType(v:sub(#short + 1), argType)
 		elseif v:sub(1, #long) == long then
-			return parseType(v:sub(#long + 1), type)
+			return parseType(v:sub(#long + 1), argType)
 		end
 	end
 
@@ -167,48 +155,80 @@ local function getInstanceByMessage(message)
 	end
 end
 
-unreliableCommandEvent.OnServerEvent:Connect(function(player, message)
-	if not isCommandMessage(message) then
-		return
+-- selene: allow(undefined_variable)
+if __LEMUR__ then
+	function table.clone(t)
+		-- selene: allow(manual_table_clone)
+		local t2 = {}
+		for k, v in pairs(t) do
+			t2[k] = v
+		end
+		return t2
 	end
-	if not player or not player:IsA("Player") then
-		warn("Invalid player in command event (Unreliable).")
-		return
-	end
-	local instance, commandName = getInstanceByMessage(message)
-	onCommand(instance, commandName, player, message)
-end)
 
-reliableCommandEvent.OnServerEvent:Connect(function(player, message)
-	if not isCommandMessage(message) then
-		return
+	function table.find(t, value)
+		for i, v in ipairs(t) do
+			if v == value then
+				return i
+			end
+		end
+		return nil
 	end
-	if not player or not player:IsA("Player") then
-		warn("Invalid player in command event (Reliable).")
-		return
-	end
-	local instance, commandName = getInstanceByMessage(message)
-	onCommand(instance, commandName, player, message)
-end)
+else
+	local eventFolder = Instance.new("Folder")
+	eventFolder.Name = "Commands"
+	eventFolder.Parent = script.Parent
 
-game.Players.PlayerAdded:Connect(function(player)
-	player.Chatted:Connect(function(message)
+	local unreliableCommandEvent = Instance.new("UnreliableRemoteEvent")
+	local reliableCommandEvent = Instance.new("RemoteEvent")
+
+	unreliableCommandEvent.Name = "UnreliableCommand"
+	reliableCommandEvent.Name = "ReliableCommand"
+	unreliableCommandEvent.Parent = eventFolder
+
+	unreliableCommandEvent.OnServerEvent:Connect(function(player, message)
 		if not isCommandMessage(message) then
 			return
 		end
 		if not player or not player:IsA("Player") then
-			warn("Invalid player in command event (Chat).")
+			warn("Invalid player in command event (Unreliable).")
 			return
 		end
 		local instance, commandName = getInstanceByMessage(message)
 		onCommand(instance, commandName, player, message)
 	end)
-end)
+
+	reliableCommandEvent.OnServerEvent:Connect(function(player, message)
+		if not isCommandMessage(message) then
+			return
+		end
+		if not player or not player:IsA("Player") then
+			warn("Invalid player in command event (Reliable).")
+			return
+		end
+		local instance, commandName = getInstanceByMessage(message)
+		onCommand(instance, commandName, player, message)
+	end)
+
+	game.Players.PlayerAdded:Connect(function(player)
+		player.Chatted:Connect(function(message)
+			if not isCommandMessage(message) then
+				return
+			end
+			if not player or not player:IsA("Player") then
+				warn("Invalid player in command event (Chat).")
+				return
+			end
+			local instance, commandName = getInstanceByMessage(message)
+			onCommand(instance, commandName, player, message)
+		end)
+	end)
+end
 
 local server = {}
 server.__index = server
 
-function server.new(globalConfigOverride: table?)
+function server.new(globalConfigOverride)
 	local self = setmetatable({}, server)
 	self._commands = {}
 	self._globalConfig = deepMerge(table.clone(defaultConfig), globalConfigOverride or {})
@@ -261,12 +281,12 @@ function server:registerCommand(commandName, config, callback)
 	registeredPrefixes[self._globalConfig.prefix] = true
 end
 
-function server:resolveCommand(player, config, message): (table?, string?, string?)
+function server:resolveCommand(player, config, message)
 	local onCommandReceived = config.onCommandReceived or self._globalConfig.onCommandReceived
 	if onCommandReceived then
 		onCommandReceived(player, message)
 	end
-	assert(type(player) == "Instance" and player:IsA("Player"), "Player must be a valid Player instance")
+	--assert(type(player) == "Instance" and player:IsA("Player"), "Player must be a valid Player instance")
 	assert(type(config) == "table", "Config must be a table")
 	assert(type(message) == "string", "Message must be a string")
 
@@ -331,7 +351,7 @@ function server:verifyPlayer(player, config)
 	return hasLocalRequiredRank or isLocalWhitelisted or hasGlobalRequiredRank or isGlobalWhitelisted
 end
 
-function server:extractCommandName(message): string?
+function server:extractCommandName(message)
 	local prefix = self._globalConfig.prefix
 	local ns = self._globalConfig.namespace
 	local pattern = "^" .. prefix .. (ns and ns .. " " or "") .. "(%w+)"
